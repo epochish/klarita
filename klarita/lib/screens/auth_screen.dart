@@ -1,0 +1,88 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import '../theme/app_theme.dart';
+
+class AuthScreen extends StatefulWidget {
+  const AuthScreen({Key? key}) : super(key: key);
+
+  @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> {
+  final _formKey = GlobalKey<FormState>();
+  bool _isLogin = true;
+  String _email = '';
+  String _password = '';
+
+  void _trySubmit() {
+    final isValid = _formKey.currentState?.validate() ?? false;
+    FocusScope.of(context).unfocus();
+
+    if (isValid) {
+      _formKey.currentState?.save();
+      if (_isLogin) {
+        context.read<AuthProvider>().login(_email, _password);
+      } else {
+        context.read<AuthProvider>().register(_email, _password);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _isLogin ? 'Welcome Back!' : 'Create Account',
+                  style: textTheme.headlineLarge,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  _isLogin ? 'Sign in to continue' : 'Sign up to get started',
+                  style: textTheme.bodyLarge?.copyWith(color: AppTheme.textSecondary),
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                TextFormField(
+                  key: const ValueKey('email'),
+                  validator: (value) => (value?.isEmpty ?? true) || !value!.contains('@') ? 'Please enter a valid email.' : null,
+                  onSaved: (value) => _email = value ?? '',
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(labelText: 'Email Address'),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextFormField(
+                  key: const ValueKey('password'),
+                  validator: (value) => (value?.isEmpty ?? true) || value!.length < 7 ? 'Password must be at least 7 characters long.' : null,
+                  onSaved: (value) => _password = value ?? '',
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Password'),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                ElevatedButton(
+                  onPressed: _trySubmit,
+                  style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+                  child: Text(_isLogin ? 'Login' : 'Sign Up'),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _isLogin = !_isLogin),
+                  child: Text(_isLogin ? 'Create new account' : 'I already have an account'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+} 
