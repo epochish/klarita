@@ -99,6 +99,8 @@ class UserGamification(Base):
     level = Column(Integer, default=1)
     current_streak = Column(Integer, default=0)
     longest_streak = Column(Integer, default=0)
+    # Date (YYYY-MM-DD) the user last completed a task. Used for streak logic.
+    last_task_completed_at = Column(DateTime(timezone=True))
     
     # Relationships
     user = relationship("User", back_populates="gamification")

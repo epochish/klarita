@@ -417,6 +417,36 @@ async def complete_task(
         gamification_profile.level += 1
         gamification_profile.points -= LEVEL_THRESHOLD
 
+    # --- Streak logic ---
+    from datetime import datetime, timezone, timedelta
+
+    today = datetime.now(timezone.utc).date()
+    last_date = (
+        gamification_profile.last_task_completed_at.date()
+        if gamification_profile.last_task_completed_at
+        else None
+    )
+
+    if last_date is None:
+        # First ever completion
+        gamification_profile.current_streak = 1
+    else:
+        delta_days = (today - last_date).days
+        if delta_days == 0:
+            # Same day – keep streak as-is
+            pass
+        elif delta_days == 1:
+            gamification_profile.current_streak += 1
+        else:
+            gamification_profile.current_streak = 1
+
+    # Update longest_streak
+    if gamification_profile.current_streak > gamification_profile.longest_streak:
+        gamification_profile.longest_streak = gamification_profile.current_streak
+
+    # Save last completion timestamp
+    gamification_profile.last_task_completed_at = datetime.now(timezone.utc)
+
     db.commit()
     db.refresh(gamification_profile)
 

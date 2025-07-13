@@ -5,6 +5,7 @@ import '../screens/focus_mode_screen.dart';
 import 'package:provider/provider.dart';
 import '../providers/breakdown_provider.dart'; // Added import for BreakdownProvider
 import '../providers/gamification_provider.dart'; // Added import for GamificationProvider
+import 'confetti_overlay.dart';
 
 class EnhancedTaskCard extends StatelessWidget {
   final Task task;
@@ -54,8 +55,11 @@ class EnhancedTaskCard extends StatelessWidget {
                 style: textTheme.bodyMedium,
               ),
             const SizedBox(height: AppSpacing.md),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.start,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
               children: [
                 // Drag handle on the left
                 ReorderableDragStartListener(
@@ -69,16 +73,19 @@ class EnhancedTaskCard extends StatelessWidget {
                     value: context.watch<BreakdownProvider>().selectedIds.contains(task.id),
                     onChanged: (_) => context.read<BreakdownProvider>().toggleSelect(task.id),
                   ),
+
+                // Estimated duration chip (tap to cycle priority)
                 GestureDetector(
                   onTap: () => context.read<BreakdownProvider>().togglePriority(task),
                   child: Chip(
-                  avatar: const Icon(Icons.timer_outlined, size: 18, color: AppTheme.primary),
-                  label: Text('${task.estimatedDuration} min'),
-                  backgroundColor: AppTheme.primary.withOpacity(0.1),
-                  labelStyle: textTheme.bodyMedium?.copyWith(color: AppTheme.primary),
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                    avatar: const Icon(Icons.timer_outlined, size: 18, color: AppTheme.primary),
+                    label: Text('${task.estimatedDuration} min'),
+                    backgroundColor: AppTheme.primary.withOpacity(0.1),
+                    labelStyle: textTheme.bodyMedium?.copyWith(color: AppTheme.primary),
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                   ),
                 ),
+
                 // Start Focus button
                 ElevatedButton.icon(
                   onPressed: () {
@@ -93,13 +100,13 @@ class EnhancedTaskCard extends StatelessWidget {
                   label: const Text('Focus'),
                 ),
 
-                // Done button
+                // Done button (base XP only)
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade600),
                   onPressed: () async {
                     final result = await context.read<GamificationProvider>().completeTask(
                       task.id,
-                      actualMinutes: task.estimatedDuration, // assume user spent est duration
+                      // No actualMinutes => base XP only
                     );
 
                     // Show toast/snackbar with XP earned
@@ -116,14 +123,13 @@ class EnhancedTaskCard extends StatelessWidget {
                         ),
                       );
 
-                    // If user leveled up, show confetti dialog
+                    // If user leveled up, show confetti overlay + dialog
                     if (result.levelUp) {
+                      showConfetti(context);
                       await showDialog(
                         context: context,
                         builder: (ctx) => AlertDialog(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(AppRadius.lg),
-                          ),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
                           title: const Text('Level Up!'),
                           content: const Text('Congratulations on reaching a new level!'),
                           actions: [

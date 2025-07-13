@@ -4,13 +4,14 @@ import 'package:provider/provider.dart';
 import '../providers/gamification_provider.dart';
 import '../theme/app_theme.dart';
 import '../models/task_models.dart';
+import '../widgets/confetti_overlay.dart';
 
 class ProgressScreen extends StatelessWidget {
   const ProgressScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final gamificationProvider = context.watch<GamificationProvider>();
+    final gamificationProvider = context.watch<GamificationProvider>()..initializeIfNeeded();
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
@@ -126,7 +127,6 @@ class ProgressScreen extends StatelessWidget {
         ),
       );
     }
-
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -138,18 +138,32 @@ class ProgressScreen extends StatelessWidget {
       itemCount: badges.length,
       itemBuilder: (context, index) {
         final badge = badges[index];
-        return Column(
-          children: [
-            CircleAvatar(
-              radius: 40,
-              backgroundColor: AppTheme.accent.withOpacity(0.1),
-              child: const Icon(Icons.shield_outlined, size: 40, color: AppTheme.accent),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(badge.name, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
-          ],
+        return Tooltip(
+          message: badge.description,
+          child: Column(
+            children: [
+              CircleAvatar(
+                radius: 40,
+                backgroundColor: AppTheme.accent.withOpacity(0.1),
+                child: _buildBadgeIcon(badge),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(badge.name, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
+            ],
+          ),
         );
       },
+    );
+  }
+
+  Widget _buildBadgeIcon(Badge badge) {
+    // Attempt to load icon asset; if not found, fallback to shield icon.
+    final assetPath = 'assets/icons/${badge.icon}';
+    return Image.asset(
+      assetPath,
+      width: 40,
+      height: 40,
+      errorBuilder: (_, __, ___) => const Icon(Icons.shield_outlined, size: 40, color: AppTheme.accent),
     );
   }
 } 

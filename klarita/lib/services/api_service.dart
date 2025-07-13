@@ -1,13 +1,28 @@
 /// Service layer for handling all API communication with the Klarita backend.
 
 import 'dart:convert';
+import 'dart:io';
+
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import '../models/task_models.dart';
+
+/// Thrown when the server returns HTTP 401. Allows callers to specifically
+/// detect an authentication failure and react (e.g. force-logout).
+class UnauthorizedException extends HttpException {
+  UnauthorizedException(String message) : super(message);
+}
 
 class ApiService {
   static const String baseUrl = 'http://127.0.0.1:8000';
   static const _storage = FlutterSecureStorage();
+
+  // Central place to wipe credentials when backend says 401.
+  static Future<void> _handleUnauthorized(String body) async {
+    await _storage.delete(key: 'access_token');
+    throw UnauthorizedException(body);
+  }
 
   // Helper method to get the authentication token
   static Future<String?> _getToken() async {
@@ -22,7 +37,11 @@ class ApiService {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer $token',
     };
-    return http.post(url, headers: headers, body: json.encode(body));
+    final response = await http.post(url, headers: headers, body: json.encode(body));
+    if (response.statusCode == 401) {
+      await _handleUnauthorized(response.body);
+    }
+    return response;
   }
 
   // Generic PATCH request helper
@@ -33,7 +52,11 @@ class ApiService {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer $token',
     };
-    return http.patch(url, headers: headers, body: json.encode(body));
+    final response = await http.patch(url, headers: headers, body: json.encode(body));
+    if (response.statusCode == 401) {
+      await _handleUnauthorized(response.body);
+    }
+    return response;
   }
 
   // ==================================
@@ -101,9 +124,11 @@ class ApiService {
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       return UserGamification.fromJson(data);
-    } else {
-      throw Exception('Failed to get gamification status: ${response.body}');
+    } else if (response.statusCode == 401) {
+      await _handleUnauthorized(response.body);
     }
+
+    throw Exception('Failed to get gamification status: ${response.body}');
   }
 
   // Marks a task as completed and optionally sends the actual time spent.
@@ -113,10 +138,13 @@ class ApiService {
     int taskId, {
     int? actualMinutes,
   }) async {
-    final payload = <String, dynamic>{};
-    if (actualMinutes != null) payload['actual_minutes'] = actualMinutes;
+    // Build endpoint with optional query param so it matches FastAPI signature
+    var endpoint = '/tasks/$taskId/complete';
+    if (actualMinutes != null) {
+      endpoint += '?actual_minutes=$actualMinutes';
+    }
 
-    final response = await _post('/tasks/$taskId/complete', payload);
+    final response = await _post(endpoint, {}); // body left empty; all params in query
 
     if (response.statusCode == 200) {
       if (response.body.isNotEmpty) {

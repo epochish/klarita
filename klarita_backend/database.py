@@ -8,23 +8,28 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Check for DATABASE_URL for PostgreSQL, otherwise fallback to SQLite
+# ---------------------------------------------------------------------------
+# STRICT Postgres-only configuration
+# ---------------------------------------------------------------------------
+# We’ve fully migrated – if DATABASE_URL is missing, fail fast so the developer
+# knows to supply one (rather than silently falling back to a local SQLite file
+# and wondering where their data went).
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
-    # Use PostgreSQL with sensible pooling defaults
-    engine = create_engine(
-        DATABASE_URL,
-        pool_size=20,
-        max_overflow=0,
-        pool_pre_ping=True,
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL environment variable not set. Klarita now requires a "
+        "PostgreSQL connection string (e.g. postgresql+psycopg2://user:pass@host/db)."
     )
-else:
-    # Use SQLite
-    SQLALCHEMY_DATABASE_URL = "sqlite:///./klarita_revamped.db"
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-    )
+
+# Create engine with a reasonable pool configuration.
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=20,
+    max_overflow=0,
+    pool_pre_ping=True,
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

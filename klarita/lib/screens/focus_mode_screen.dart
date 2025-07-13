@@ -5,6 +5,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:provider/provider.dart';
 import '../models/task_models.dart';
 import '../providers/gamification_provider.dart';
+import '../widgets/confetti_overlay.dart';
 import '../theme/app_theme.dart';
 
 class FocusModeScreen extends StatefulWidget {
@@ -18,6 +19,7 @@ class FocusModeScreen extends StatefulWidget {
 class _FocusModeScreenState extends State<FocusModeScreen> with TickerProviderStateMixin {
   Timer? _timer;
   late int _remainingSeconds;
+  int _elapsedSeconds = 0; // Tracks the actual seconds spent so far
   bool _isTimerRunning = false;
   final AudioPlayer _audioPlayer = AudioPlayer();
 
@@ -42,6 +44,7 @@ class _FocusModeScreenState extends State<FocusModeScreen> with TickerProviderSt
         if (_remainingSeconds > 0) {
           setState(() {
             _remainingSeconds--;
+            _elapsedSeconds++; // Increment elapsed time each tick
           });
         } else {
           _timer?.cancel();
@@ -59,15 +62,32 @@ class _FocusModeScreenState extends State<FocusModeScreen> with TickerProviderSt
     setState(() {
       _isTimerRunning = false;
       _remainingSeconds = (widget.task.estimatedDuration ?? 25) * 60;
+      _elapsedSeconds = 0;
     });
+  }
+
+  void _addMoreTime({int minutes = 5}) {
+    setState(() {
+      _remainingSeconds += minutes * 60;
+    });
+  }
+
+  void _takeBreak() {
+    _timer?.cancel();
+    setState(() {
+      _isTimerRunning = false;
+    });
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Break time! Resume whenever you are ready.'), behavior: SnackBarBehavior.floating));
   }
 
   Future<void> _onTimerFinish() async {
     await _audioPlayer.play(AssetSource('sounds/pomodoro_complete.mp3'));
 
-    // Calculate elapsed minutes based on initial estimate and remaining seconds
-    final estMinutes = widget.task.estimatedDuration ?? 25;
-    final elapsedMinutes = estMinutes - (_remainingSeconds ~/ 60);
+    // Calculate actual minutes spent based on the tracked elapsed seconds
+    final elapsedMinutes = (_elapsedSeconds / 60).ceil();
 
     final result = await context.read<GamificationProvider>().completeTask(
       widget.task.id,
@@ -75,6 +95,10 @@ class _FocusModeScreenState extends State<FocusModeScreen> with TickerProviderSt
     );
 
     if (!mounted) return;
+
+    if (result.levelUp) {
+      showConfetti(context);
+    }
 
     await showDialog(
       context: context,
@@ -125,24 +149,39 @@ class _FocusModeScreenState extends State<FocusModeScreen> with TickerProviderSt
               style: textTheme.displayLarge?.copyWith(fontSize: 80, color: AppTheme.textPrimary),
             ).animate(target: _isTimerRunning ? 1 : 0).scale(duration: 300.ms, curve: Curves.easeInOut),
             const SizedBox(height: AppSpacing.xl),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: AppSpacing.lg,
               children: [
                 IconButton(
+                  tooltip: 'Reset',
                   icon: const Icon(Icons.refresh),
                   onPressed: _resetTimer,
                   iconSize: 32,
                   color: AppTheme.textSecondary,
                 ),
-                const SizedBox(width: AppSpacing.lg),
+                IconButton(
+                  tooltip: 'Need more time (+5m)',
+                  icon: const Icon(Icons.alarm_add),
+                  onPressed: () => _addMoreTime(minutes: 5),
+                  iconSize: 32,
+                  color: AppTheme.textSecondary,
+                ),
                 FloatingActionButton.large(
                   onPressed: _toggleTimer,
                   child: Icon(_isTimerRunning ? Icons.pause : Icons.play_arrow, size: 60),
                 ).animate().scale(delay: 200.ms),
-                const SizedBox(width: AppSpacing.lg),
                 IconButton(
+                  tooltip: 'Finish now',
                   icon: const Icon(Icons.skip_next),
                   onPressed: _onTimerFinish,
+                  iconSize: 32,
+                  color: AppTheme.textSecondary,
+                ),
+                IconButton(
+                  tooltip: 'Take a break',
+                  icon: const Icon(Icons.free_breakfast),
+                  onPressed: _takeBreak,
                   iconSize: 32,
                   color: AppTheme.textSecondary,
                 ),
