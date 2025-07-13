@@ -84,7 +84,12 @@ class _FocusModeScreenState extends State<FocusModeScreen> with TickerProviderSt
   }
 
   Future<void> _onTimerFinish() async {
-    await _audioPlayer.play(AssetSource('sounds/pomodoro_complete.mp3'));
+    try {
+      await _audioPlayer.play(AssetSource('sounds/pomodoro_complete.mp3'));
+    } catch (e) {
+      // Silently handle audio errors - the file might be missing or corrupted
+      print('Audio playback failed: $e');
+    }
 
     // Calculate actual minutes spent based on the tracked elapsed seconds
     final elapsedMinutes = (_elapsedSeconds / 60).ceil();

@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../models/task_models.dart';
+import '../models/analytics_models.dart';
 
 /// Thrown when the server returns HTTP 401. Allows callers to specifically
 /// detect an authentication failure and react (e.g. force-logout).
@@ -29,34 +30,80 @@ class ApiService {
     return await _storage.read(key: 'access_token');
   }
 
-  // Generic POST request helper
-  static Future<http.Response> _post(String endpoint, Map<String, dynamic> body) async {
-    final token = await _getToken();
-    final url = Uri.parse('$baseUrl$endpoint');
-    final headers = {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
-    };
-    final response = await http.post(url, headers: headers, body: json.encode(body));
-    if (response.statusCode == 401) {
-      await _handleUnauthorized(response.body);
+  // Generic POST request helper with retry logic
+  static Future<http.Response> _post(String endpoint, Map<String, dynamic> body, {int maxRetries = 3}) async {
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        final token = await _getToken();
+        final url = Uri.parse('$baseUrl$endpoint');
+        final headers = {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        };
+        final response = await http.post(url, headers: headers, body: json.encode(body));
+        if (response.statusCode == 401) {
+          await _handleUnauthorized(response.body);
+        }
+        return response;
+      } catch (e) {
+        if (attempt == maxRetries - 1) {
+          rethrow; // Last attempt failed, throw the error
+        }
+        // Wait before retrying (exponential backoff)
+        await Future.delayed(Duration(seconds: (attempt + 1) * 2));
+      }
     }
-    return response;
+    throw Exception('Request failed after $maxRetries attempts');
   }
 
-  // Generic PATCH request helper
-  static Future<http.Response> _patch(String endpoint, Map<String, dynamic> body) async {
-    final token = await _getToken();
-    final url = Uri.parse('$baseUrl$endpoint');
-    final headers = {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
-    };
-    final response = await http.patch(url, headers: headers, body: json.encode(body));
-    if (response.statusCode == 401) {
-      await _handleUnauthorized(response.body);
+  // Generic PATCH request helper with retry logic
+  static Future<http.Response> _patch(String endpoint, Map<String, dynamic> body, {int maxRetries = 3}) async {
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        final token = await _getToken();
+        final url = Uri.parse('$baseUrl$endpoint');
+        final headers = {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        };
+        final response = await http.patch(url, headers: headers, body: json.encode(body));
+        if (response.statusCode == 401) {
+          await _handleUnauthorized(response.body);
+        }
+        return response;
+      } catch (e) {
+        if (attempt == maxRetries - 1) {
+          rethrow;
+        }
+        await Future.delayed(Duration(seconds: (attempt + 1) * 2));
+      }
     }
-    return response;
+    throw Exception('Request failed after $maxRetries attempts');
+  }
+
+  // Generic GET request helper with retry logic
+  static Future<http.Response> _get(String endpoint, {int maxRetries = 3}) async {
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        final token = await _getToken();
+        final url = Uri.parse('$baseUrl$endpoint');
+        final headers = {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        };
+        final response = await http.get(url, headers: headers);
+        if (response.statusCode == 401) {
+          await _handleUnauthorized(response.body);
+        }
+        return response;
+      } catch (e) {
+        if (attempt == maxRetries - 1) {
+          rethrow;
+        }
+        await Future.delayed(Duration(seconds: (attempt + 1) * 2));
+      }
+    }
+    throw Exception('Request failed after $maxRetries attempts');
   }
 
   // ==================================
@@ -113,19 +160,11 @@ class ApiService {
   // ==================================
 
   static Future<UserGamification> getGamificationStatus() async {
-    final token = await _getToken();
-    final url = Uri.parse('$baseUrl/gamification/status');
-    final headers = {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
-    };
-    final response = await http.get(url, headers: headers);
+    final response = await _get('/gamification/status');
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       return UserGamification.fromJson(data);
-    } else if (response.statusCode == 401) {
-      await _handleUnauthorized(response.body);
     }
 
     throw Exception('Failed to get gamification status: ${response.body}');
@@ -219,5 +258,109 @@ class ApiService {
     } else {
       throw Exception('Failed to merge tasks: ${response.body}');
     }
+  }
+
+  // ==================================
+  // Analytics Endpoints
+  // ==================================
+
+  /// Get comprehensive analytics summary for the current user
+  static Future<AnalyticsSummary> getAnalyticsSummary() async {
+    final token = await _getToken();
+    final url = Uri.parse('$baseUrl/analytics/summary');
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+    final response = await http.get(url, headers: headers);
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return AnalyticsSummary.fromJson(data);
+    } else if (response.statusCode == 401) {
+      await _handleUnauthorized(response.body);
+    }
+
+    throw Exception('Failed to get analytics summary: ${response.body}');
+  }
+
+  /// Get analytics trends for a specific period
+  static Future<AnalyticsTrends> getAnalyticsTrends({String period = 'week'}) async {
+    final token = await _getToken();
+    final url = Uri.parse('$baseUrl/analytics/trends?period=$period');
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+    final response = await http.get(url, headers: headers);
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return AnalyticsTrends.fromJson(data);
+    } else if (response.statusCode == 401) {
+      await _handleUnauthorized(response.body);
+    }
+
+    throw Exception('Failed to get analytics trends: ${response.body}');
+  }
+
+  /// Get task completion statistics by category
+  static Future<List<CategoryStats>> getCategoryAnalytics() async {
+    final token = await _getToken();
+    final url = Uri.parse('$baseUrl/analytics/categories');
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+    final response = await http.get(url, headers: headers);
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body) as List;
+      return data.map((item) => CategoryStats.fromJson(item)).toList();
+    } else if (response.statusCode == 401) {
+      await _handleUnauthorized(response.body);
+    }
+
+    throw Exception('Failed to get category analytics: ${response.body}');
+  }
+
+  /// Get performance analytics including best times and patterns
+  static Future<AnalyticsPerformance> getPerformanceAnalytics() async {
+    final token = await _getToken();
+    final url = Uri.parse('$baseUrl/analytics/performance');
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+    final response = await http.get(url, headers: headers);
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return AnalyticsPerformance.fromJson(data);
+    } else if (response.statusCode == 401) {
+      await _handleUnauthorized(response.body);
+    }
+
+    throw Exception('Failed to get performance analytics: ${response.body}');
+  }
+
+  /// Get personalized insights based on user behavior patterns
+  static Future<List<PersonalizedInsight>> getPersonalizedInsights() async {
+    final token = await _getToken();
+    final url = Uri.parse('$baseUrl/analytics/insights');
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+    final response = await http.get(url, headers: headers);
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body) as List;
+      return data.map((item) => PersonalizedInsight.fromJson(item)).toList();
+    } else if (response.statusCode == 401) {
+      await _handleUnauthorized(response.body);
+    }
+
+    throw Exception('Failed to get personalized insights: ${response.body}');
   }
 } 

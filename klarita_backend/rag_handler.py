@@ -11,6 +11,11 @@ from langchain_community.vectorstores import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from sqlalchemy.orm import Session
 from . import models
+try:
+    from . import enhanced_rl_handler, analytics_handler
+    HAS_ENHANCED_FEATURES = True
+except ImportError:
+    HAS_ENHANCED_FEATURES = False
 
 # --- Configuration ---
 # Make sure to set your GEMINI_API_KEY in your .env file
@@ -110,7 +115,7 @@ def get_memories_from_vector_store(user_id: int, goal: str):
 
 def get_initial_breakdown(db: Session, goal: str, user_id: int):
     """
-    Invokes the AI to get a structured breakdown of a user's goal, personalized with RAG.
+    Invokes the AI to get a structured breakdown of a user's goal, personalized with RAG and RL.
     """
     print(f"Generating RAG-powered breakdown for goal: '{goal}' for user_id: {user_id}")
 
@@ -128,6 +133,38 @@ def get_initial_breakdown(db: Session, goal: str, user_id: int):
         )
     else:
         pref_str = "No explicit preferences yet."
+
+    # Enhance with RL recommendations and analytics
+    if HAS_ENHANCED_FEATURES:
+        try:
+            # Get RL-based recommendations
+            rl_recommendations = enhanced_rl_handler.get_rl_recommendations(db, user_id, goal)
+            
+            # Get analytics insights for context
+            analytics_stats = analytics_handler.get_quick_stats(db, user_id)
+            best_time_stats = analytics_handler.get_time_of_day_stats(db, user_id)
+            
+            # Enhance preferences with RL learning
+            pref_str += f"\n\nRL-learned preferences: {rl_recommendations}"
+            
+            # Add analytics context
+            if analytics_stats.overall_completion_rate > 0:
+                pref_str += f"\nUser typically completes {analytics_stats.overall_completion_rate:.1f}% of tasks."
+            
+            if best_time_stats:
+                best_time = max(best_time_stats, key=lambda x: x.completion_rate)
+                pref_str += f"\nBest performance at {best_time.hour:02d}:00 with {best_time.completion_rate:.1f}% completion."
+            
+            # Add task categorization context
+            task_category = analytics_handler.categorize_task(goal)
+            category_stats = analytics_handler.get_category_stats(db, user_id)
+            for cat_stat in category_stats:
+                if cat_stat.category == task_category:
+                    pref_str += f"\nFor {task_category} tasks, user typically completes {cat_stat.completion_rate:.1f}%."
+                    break
+                    
+        except Exception as e:
+            print(f"Error enhancing with RL/analytics: {e}")
 
     try:
         # 2. Invoke the RAG chain
@@ -158,17 +195,89 @@ def get_initial_breakdown(db: Session, goal: str, user_id: int):
         return [{"title": "Error", "description": "Sorry, an error occurred.", "estimated_duration": 5}]
 
 
-def get_stuck_coach_response(message: str, user_id: int):
+def get_stuck_coach_response(message: str, user_id: int, db: Session = None) -> str:
     """
-    Invokes the AI coach to get a Socratic response.
+    Provides personalized stuck coach response using RAG and analytics context.
     """
-    print(f"Generating AI coach response for user_id: {user_id}")
+    print(f"Generating enhanced stuck coach response for user {user_id}: '{message}'")
+    
+    # Enhanced stuck coach prompt with personalization
+    enhanced_stuck_coach_prompt = ChatPromptTemplate.from_messages([
+        ("system", """
+You are Klarita, a calm and empathetic AI coach specializing in helping users with ADHD who feel "stuck" or overwhelmed.
+
+Here is what you know about this user:
+{user_context}
+
+Your approach should be:
+1. Use a gentle, Socratic questioning style to help them identify the smallest possible next step
+2. Reference their past successes and patterns when appropriate
+3. Be reassuring and non-judgmental
+4. Keep responses short and focused on one question or gentle suggestion at a time
+5. Help reduce their anxiety and help them feel capable of starting
+
+Your goal is to help them break through their mental block and take action.
+"""),
+        ("human", "{message}")
+    ])
+    
+    # Build user context
+    user_context = "General user guidance."
+    
+    if db and HAS_ENHANCED_FEATURES:
+        try:
+            # Get user analytics for context
+            analytics_stats = analytics_handler.get_quick_stats(db, user_id)
+            category_stats = analytics_handler.get_category_stats(db, user_id)
+            
+            # Build personalized context
+            context_parts = []
+            
+            if analytics_stats.overall_completion_rate > 0:
+                context_parts.append(f"User typically completes {analytics_stats.overall_completion_rate:.1f}% of their tasks.")
+            
+            if analytics_stats.current_streak > 0:
+                context_parts.append(f"User is currently on a {analytics_stats.current_streak}-day streak.")
+            
+            if category_stats:
+                best_category = max(category_stats, key=lambda x: x.completion_rate)
+                context_parts.append(f"User performs best with {best_category.category} tasks ({best_category.completion_rate:.1f}% success rate).")
+            
+            # Get recent memories for encouragement
+            try:
+                memories = get_memories_from_vector_store(user_id, message)
+                if memories:
+                    context_parts.append("User has successfully handled similar challenges before.")
+            except Exception as e:
+                print(f"Error getting memories: {e}")
+            
+            # Get RL insights about user preferences
+            try:
+                adaptive_prefs = enhanced_rl_handler.rl_handler.get_adaptive_preferences(db, user_id)
+                if adaptive_prefs:
+                    context_parts.append("AI has learned this user's optimal working patterns.")
+            except Exception as e:
+                print(f"Error getting RL preferences: {e}")
+            
+            if context_parts:
+                user_context = " ".join(context_parts)
+                
+        except Exception as e:
+            print(f"Error building user context: {e}")
+    
+    # Create enhanced chain
+    enhanced_stuck_coach_chain = enhanced_stuck_coach_prompt | llm | StrOutputParser()
     
     try:
-        # Invoke the LangChain chain
-        ai_response = stuck_coach_chain.invoke({"message": message})
-        return ai_response
+        # Get AI response with personalized context
+        ai_response = enhanced_stuck_coach_chain.invoke({
+            "message": message,
+            "user_context": user_context
+        })
+        
+        return ai_response.strip()
+        
     except Exception as e:
-        print(f"An unexpected error occurred in the stuck coach handler: {e}")
-        return "I'm sorry, I'm having a little trouble thinking right now. Could you try asking again in a moment?"
+        print(f"Error generating stuck coach response: {e}")
+        return "I'm here to help. What's the smallest step you could take right now to move forward?"
 

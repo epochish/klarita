@@ -2,8 +2,10 @@ import 'package:flutter/material.dart' hide Badge;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../providers/gamification_provider.dart';
+import '../providers/analytics_provider.dart';
 import '../theme/app_theme.dart';
 import '../models/task_models.dart';
+import '../models/analytics_models.dart';
 import '../widgets/confetti_overlay.dart';
 import '../widgets/klarita_logo.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -14,7 +16,13 @@ class ProgressScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gamificationProvider = context.watch<GamificationProvider>()..initializeIfNeeded();
+    final analyticsProvider = context.watch<AnalyticsProvider>();
     final textTheme = Theme.of(context).textTheme;
+
+    // Auto-load analytics data when screen is first built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      analyticsProvider.autoRefreshIfNeeded();
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -23,13 +31,18 @@ class ProgressScreen extends StatelessWidget {
         titleTextStyle: textTheme.headlineLarge,
       ),
       body: RefreshIndicator(
-        onRefresh: () => context.read<GamificationProvider>().fetchGamificationStatus(),
-        child: _buildBody(context, gamificationProvider, textTheme),
+        onRefresh: () async {
+          await Future.wait([
+            context.read<GamificationProvider>().fetchGamificationStatus(),
+            context.read<AnalyticsProvider>().refresh(),
+          ]);
+        },
+        child: _buildBody(context, gamificationProvider, analyticsProvider, textTheme),
       ),
     );
   }
 
-  Widget _buildBody(BuildContext context, GamificationProvider provider, TextTheme textTheme) {
+  Widget _buildBody(BuildContext context, GamificationProvider provider, AnalyticsProvider analyticsProvider, TextTheme textTheme) {
     if (provider.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -50,7 +63,7 @@ class ProgressScreen extends StatelessWidget {
         const SizedBox(height: AppSpacing.lg),
         _buildStreakCard(context, profile).animate().fadeIn(delay: 400.ms),
         const SizedBox(height: AppSpacing.lg),
-        AnalyticsInsightsSection().animate().fadeIn(delay: 600.ms),
+        _buildAnalyticsSection(context, analyticsProvider).animate().fadeIn(delay: 600.ms),
         const SizedBox(height: AppSpacing.lg),
         Text('Your Badges', style: textTheme.headlineMedium).animate().slideX(),
         const SizedBox(height: AppSpacing.md),
@@ -181,7 +194,6 @@ class ProgressScreen extends StatelessWidget {
 
   Widget _buildStreakCalendar(BuildContext context, UserGamification profile) {
     final textTheme = Theme.of(context).textTheme;
-    final completedDates = profile.completedDates;
     
     // Generate last 7 days
     final now = DateTime.now();
@@ -189,25 +201,56 @@ class ProgressScreen extends StatelessWidget {
       return now.subtract(Duration(days: 6 - index));
     });
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Last 7 Days', style: textTheme.titleMedium),
-        const SizedBox(height: AppSpacing.md),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: last7Days.map((date) {
-            final isCompleted = completedDates.any((completedDate) {
-              final completed = DateTime.parse(completedDate);
-              return completed.year == date.year &&
-                     completed.month == date.month &&
-                     completed.day == date.day;
-            });
-            
-            return _buildDayIndicator(context, date, isCompleted);
-          }).toList(),
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.primary.withOpacity(0.05),
+            AppTheme.primary.withOpacity(0.02),
+          ],
         ),
-      ],
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppTheme.primary.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.local_fire_department, color: AppTheme.primary, size: 20),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                'Last 7 Days',
+                style: textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: last7Days.map((date) {
+              // Simple heuristic: assume completed if within current streak
+              final daysAgo = now.difference(date).inDays;
+              final isCompleted = daysAgo < profile.currentStreak;
+              
+              return _buildDayIndicator(context, date, isCompleted);
+            }).toList(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -217,30 +260,55 @@ class ProgressScreen extends StatelessWidget {
     return Column(
       children: [
         Container(
-          width: 32,
-          height: 32,
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
+            gradient: isCompleted 
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppTheme.success,
+                      AppTheme.success.withOpacity(0.8),
+                    ],
+                  )
+                : null,
             color: isCompleted 
-                ? AppTheme.success 
+                ? null
                 : isToday 
-                    ? AppTheme.primary.withOpacity(0.3)
+                    ? AppTheme.primary.withOpacity(0.2)
                     : Colors.transparent,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: isToday ? AppTheme.primary : AppTheme.border,
+              color: isToday 
+                  ? AppTheme.primary 
+                  : isCompleted 
+                      ? AppTheme.success.withOpacity(0.3)
+                      : AppTheme.border,
               width: isToday ? 2 : 1,
             ),
+            boxShadow: isCompleted ? [
+              BoxShadow(
+                color: AppTheme.success.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ] : null,
           ),
           child: isCompleted
-              ? const Icon(Icons.check, color: Colors.white, size: 16)
+              ? const Icon(Icons.check, color: Colors.white, size: 18)
               : null,
         ),
         const SizedBox(height: AppSpacing.xs),
         Text(
           _getDayLabel(date),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: isToday ? AppTheme.primary : AppTheme.textSecondary,
-            fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+            color: isToday 
+                ? AppTheme.primary 
+                : isCompleted 
+                    ? AppTheme.success
+                    : AppTheme.textSecondary,
+            fontWeight: isToday || isCompleted ? FontWeight.w600 : FontWeight.normal,
           ),
         ),
       ],
@@ -268,18 +336,49 @@ class ProgressScreen extends StatelessWidget {
   }
 
   Widget _buildStatItem(TextTheme textTheme, IconData icon, Color color, String label, String value) {
-    return Column(
-      children: [
-        CircleAvatar(
-          radius: 30,
-          backgroundColor: color.withOpacity(0.1),
-          child: Icon(icon, size: 32, color: color),
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            color.withOpacity(0.1),
+            color.withOpacity(0.05),
+          ],
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Text(value, style: textTheme.headlineMedium),
-        const SizedBox(height: AppSpacing.xs),
-        Text(label, style: textTheme.bodyMedium),
-      ],
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 28, color: color),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            value, 
+            style: textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            label, 
+            style: textTheme.bodyMedium?.copyWith(
+              color: AppTheme.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 
@@ -329,9 +428,350 @@ class ProgressScreen extends StatelessWidget {
       width: 40,
       height: 40,
       errorBuilder: (_, __, ___) => const Icon(Icons.shield_outlined, size: 40, color: AppTheme.accent),
+        );
+  }
+
+  Widget _buildAnalyticsSection(BuildContext context, AnalyticsProvider analyticsProvider) {
+    final textTheme = Theme.of(context).textTheme;
+    
+    if (analyticsProvider.isLoading) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Insights & Analytics', style: textTheme.headlineMedium),
+          const SizedBox(height: AppSpacing.md),
+          const Center(child: CircularProgressIndicator()),
+        ],
+      );
+    }
+
+    if (analyticsProvider.error != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Insights & Analytics', style: textTheme.headlineMedium),
+          const SizedBox(height: AppSpacing.md),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Column(
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: AppTheme.error),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text('Unable to load analytics', style: textTheme.titleMedium),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(analyticsProvider.error!, style: textTheme.bodySmall),
+                  const SizedBox(height: AppSpacing.md),
+                  ElevatedButton(
+                    onPressed: () => analyticsProvider.refresh(),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final categoryStats = analyticsProvider.categoryStats;
+    final stuckStats = analyticsProvider.stuckStats;
+    final insights = analyticsProvider.insights;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Insights & Analytics', style: textTheme.headlineMedium),
+        const SizedBox(height: AppSpacing.md),
+        
+        // Show personalized insights first
+        if (insights.isNotEmpty) ...[
+          _buildInsightsCard(context, insights),
+          const SizedBox(height: AppSpacing.md),
+        ],
+        
+        // Category completion chart
+        if (categoryStats.isNotEmpty) ...[
+          _buildCategoryChart(context, categoryStats),
+          const SizedBox(height: AppSpacing.md),
+        ],
+        
+        // Stuck analysis chart
+        if (stuckStats.isNotEmpty) ...[
+          _buildStuckChart(context, stuckStats),
+          const SizedBox(height: AppSpacing.md),
+        ],
+        
+        // Quick stats card
+        if (analyticsProvider.quickStats != null) ...[
+          _buildQuickStatsCard(context, analyticsProvider.quickStats!),
+        ],
+      ],
     );
   }
-} 
+
+  Widget _buildInsightsCard(BuildContext context, List<PersonalizedInsight> insights) {
+    final textTheme = Theme.of(context).textTheme;
+    
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.psychology, color: AppTheme.primary),
+                const SizedBox(width: AppSpacing.sm),
+                Text('AI Insights', style: textTheme.titleLarge),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+            ...insights.take(3).map((insight) => Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(_getInsightIcon(insight.type), size: 16, color: AppTheme.primary),
+                        const SizedBox(width: AppSpacing.xs),
+                        Expanded(child: Text(insight.title, style: textTheme.titleSmall)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                          ),
+                          child: Text('${insight.confidencePercentage.round()}%', 
+                                     style: textTheme.labelSmall),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(insight.description, style: textTheme.bodySmall),
+                  ],
+                ),
+              ),
+            )).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryChart(BuildContext context, List<CategoryStats> categoryStats) {
+    final textTheme = Theme.of(context).textTheme;
+    
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Task Completion by Category', style: textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.md),
+            SizedBox(
+              height: 180,
+              child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.spaceAround,
+                  maxY: categoryStats.map((e) => e.totalTasks).reduce((a, b) => a > b ? a : b).toDouble(),
+                  barTouchData: BarTouchData(enabled: false),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          final index = value.toInt();
+                          if (index >= 0 && index < categoryStats.length) {
+                            return Text(categoryStats[index].category);
+                          }
+                          return const Text('');
+                        },
+                      ),
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  barGroups: categoryStats.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final stat = entry.value;
+                    return BarChartGroupData(
+                      x: index,
+                      barRods: [
+                        BarChartRodData(
+                          toY: stat.completedTasks.toDouble(),
+                          color: _getCategoryColor(index),
+                          width: 18,
+                        )
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text('Real-time data from your task completion history', 
+                 style: textTheme.bodySmall?.copyWith(color: AppTheme.textSecondary)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStuckChart(BuildContext context, List<StuckStats> stuckStats) {
+    final textTheme = Theme.of(context).textTheme;
+    
+    if (stuckStats.where((s) => s.stuckCount > 0).isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Column(
+            children: [
+              Icon(Icons.check_circle, size: 48, color: AppTheme.success),
+              const SizedBox(height: AppSpacing.sm),
+              Text('Great News!', style: textTheme.titleMedium),
+              const SizedBox(height: AppSpacing.xs),
+              Text('You haven\'t gotten stuck recently. Keep up the great work!', 
+                   style: textTheme.bodyMedium, textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Where You Get Stuck', style: textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.md),
+            SizedBox(
+              height: 120,
+              child: PieChart(
+                PieChartData(
+                  sections: stuckStats.where((s) => s.stuckCount > 0).map((stat) {
+                    final color = _getCategoryColor(stuckStats.indexOf(stat));
+                    return PieChartSectionData(
+                      value: stat.stuckCount.toDouble(),
+                      color: color,
+                      title: stat.category,
+                      radius: 32,
+                      titleStyle: textTheme.bodySmall?.copyWith(color: Colors.white),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text('Categories where you\'ve used the "Feeling Stuck" coach', 
+                 style: textTheme.bodySmall?.copyWith(color: AppTheme.textSecondary)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickStatsCard(BuildContext context, QuickStats quickStats) {
+    final textTheme = Theme.of(context).textTheme;
+    
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Quick Stats', style: textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildQuickStatItem(
+                    'Completion Rate',
+                    '${quickStats.overallCompletionRate.round()}%',
+                    Icons.check_circle,
+                    AppTheme.success,
+                  ),
+                ),
+                Expanded(
+                  child: _buildQuickStatItem(
+                    'Total Tasks',
+                    '${quickStats.totalTasksCompleted}',
+                    Icons.task_alt,
+                    AppTheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildQuickStatItem(
+                    'Current Level',
+                    '${quickStats.currentLevel}',
+                    Icons.military_tech,
+                    AppTheme.warning,
+                  ),
+                ),
+                Expanded(
+                  child: _buildQuickStatItem(
+                    'Total XP',
+                    '${quickStats.totalXp}',
+                    Icons.emoji_events,
+                    AppTheme.accent,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickStatItem(String label, String value, IconData icon, Color color) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 24),
+        const SizedBox(height: AppSpacing.xs),
+        Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+        Text(label, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+      ],
+    );
+  }
+
+  IconData _getInsightIcon(String type) {
+    switch (type) {
+      case 'productivity_tip':
+        return Icons.lightbulb;
+      case 'pattern_recognition':
+        return Icons.analytics;
+      case 'recommendation':
+        return Icons.thumb_up;
+      case 'ai_learning':
+        return Icons.psychology;
+      default:
+        return Icons.info;
+    }
+  }
+
+  Color _getCategoryColor(int index) {
+    final colors = [AppTheme.primary, AppTheme.secondary, AppTheme.warning, AppTheme.accent, AppTheme.success];
+    return colors[index % colors.length];
+  }
+}
 
 class AnalyticsInsightsSection extends StatelessWidget {
   @override

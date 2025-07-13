@@ -152,3 +152,70 @@ class TaskReorderRequest(BaseModel):
 
 class TaskMergeRequest(BaseModel):
     task_ids: List[int] = Field(..., min_items=2, description="IDs of tasks to merge")
+
+# ==================================
+# Analytics Schemas
+# ==================================
+
+class CategoryStats(BaseModel):
+    category: str
+    completed_tasks: int
+    total_tasks: int
+    completion_rate: float
+    average_duration: Optional[float] = None
+
+class TimeOfDayStats(BaseModel):
+    hour: int
+    completed_tasks: int
+    total_tasks: int
+    completion_rate: float
+    average_duration: Optional[float] = None
+
+class CompletionTrend(BaseModel):
+    date: str
+    completed_tasks: int
+    total_tasks: int
+    completion_rate: float
+
+class StuckStats(BaseModel):
+    category: str
+    stuck_count: int
+    total_sessions: int
+    stuck_percentage: float
+
+class QuickStats(BaseModel):
+    total_tasks_completed: int
+    total_tasks_created: int
+    overall_completion_rate: float
+    average_task_duration: Optional[float] = None
+    current_streak: int
+    longest_streak: int
+    total_xp: int
+    current_level: int
+
+class PersonalizedInsight(BaseModel):
+    type: str  # "productivity_tip", "pattern_recognition", "recommendation"
+    title: str
+    description: str
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    category: Optional[str] = None
+
+class AnalyticsSummary(BaseModel):
+    quick_stats: QuickStats
+    category_stats: List[CategoryStats]
+    time_of_day_stats: List[TimeOfDayStats]
+    stuck_stats: List[StuckStats]
+    completion_trends: List[CompletionTrend]
+    personalized_insights: List[PersonalizedInsight]
+
+class AnalyticsTrends(BaseModel):
+    period: str  # "week", "month", "quarter"
+    trends: List[CompletionTrend]
+    streak_history: List[Dict[str, Any]]
+
+class AnalyticsPerformance(BaseModel):
+    best_day_of_week: str
+    best_time_of_day: int
+    most_productive_duration: int
+    preferred_task_size: str  # "small", "medium", "large"
+    focus_patterns: Dict[str, Any]

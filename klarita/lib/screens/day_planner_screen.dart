@@ -8,12 +8,17 @@ import '../services/toast_service.dart';
 import '../models/task_models.dart';
 import '../widgets/enhanced_task_card.dart';
 import '../widgets/klarita_logo.dart';
+import '../widgets/session_feedback_dialog.dart';
 
 class DayPlannerScreen extends StatelessWidget {
   const DayPlannerScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    // Check for session completion and show feedback dialog if needed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkSessionCompletionAndShowFeedback(context);
+    });
     final breakdownProvider = context.watch<BreakdownProvider>();
     final gamificationProvider = context.watch<GamificationProvider>();
     final textTheme = Theme.of(context).textTheme;
@@ -28,9 +33,13 @@ class DayPlannerScreen extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.save_alt_outlined),
               tooltip: 'Save as Memory',
-              onPressed: () {
-                breakdownProvider.saveCurrentSessionAsMemory();
-                ToastService.showSuccess(context, 'Plan saved as memory for AI learning!');
+              onPressed: () async {
+                try {
+                  await breakdownProvider.saveCurrentSessionAsMemory();
+                  ToastService.showSuccess(context, 'Plan saved as memory for AI learning!');
+                } catch (e) {
+                  ToastService.showError(context, 'Failed to save plan: ${e.toString()}');
+                }
               },
             ),
             IconButton(
@@ -363,5 +372,31 @@ class DayPlannerScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  void _checkSessionCompletionAndShowFeedback(BuildContext context) {
+    final breakdownProvider = context.read<BreakdownProvider>();
+    
+    // Only check if we haven't already shown feedback for this session
+    if (breakdownProvider.currentSession != null && breakdownProvider.isSessionReadyForFeedback) {
+      final session = breakdownProvider.currentSession!;
+      final stats = breakdownProvider.sessionStats;
+      
+      // Show feedback dialog if session is sufficiently complete and we haven't shown it yet
+      if (stats.completionRate >= 0.8) { // 80% completion threshold
+        showSessionFeedbackDialog(
+          context: context,
+          sessionGoal: session.originalGoal,
+          completedTasks: stats.completedTasks,
+          totalTasks: stats.totalTasks,
+          onSubmitFeedback: (rating, comments) async {
+            await breakdownProvider.submitFeedback(
+              rating: rating,
+              comments: comments,
+            );
+          },
+        );
+      }
+    }
   }
 } 

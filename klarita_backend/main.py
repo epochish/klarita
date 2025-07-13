@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import local modules
-from . import models, schemas, auth, rag_handler, rl_handler
+from . import models, schemas, auth, rag_handler, rl_handler, analytics_handler
 from .database import SessionLocal, engine, get_db
 
 # Create all database tables
@@ -218,11 +218,18 @@ async def submit_session_feedback(
     db.commit()
     db.refresh(new_feedback)
 
-    # Trigger RL preference update (simple heuristic)
+    # Trigger enhanced RL learning with session and rating
     try:
-        rl_handler.process_feedback(db, current_user.id)
+        from . import enhanced_rl_handler
+        enhanced_rl_handler.process_feedback(db, current_user.id, session_id, feedback.rating)
+        print(f"Enhanced RL processing completed for user {current_user.id}")
     except Exception as e:
-        print(f"RL processing error: {e}")
+        print(f"Enhanced RL processing error: {e}")
+        # Fallback to simple RL handler
+        try:
+            rl_handler.process_feedback(db, current_user.id)
+        except Exception as fallback_e:
+            print(f"Fallback RL processing error: {fallback_e}")
 
     return new_feedback
 
@@ -466,6 +473,23 @@ async def complete_task(
     if total_completed == 1:
         try_award_badge("First Task")
 
+    # --- Enhanced RL Integration ---
+    # Notify the enhanced RL handler about task completion for learning
+    try:
+        from . import enhanced_rl_handler
+        # Use task completion as positive feedback for RL learning
+        # If task was completed faster than estimated, give higher "rating"
+        implied_rating = 4  # Base positive rating for task completion
+        if actual_minutes is not None and task.estimated_duration and actual_minutes < task.estimated_duration:
+            implied_rating = 5  # Higher rating for faster completion
+        
+        enhanced_rl_handler.process_feedback(
+            db, current_user.id, task.session_id, implied_rating
+        )
+        print(f"Enhanced RL task completion processed for user {current_user.id}")
+    except Exception as e:
+        print(f"Enhanced RL task completion processing error: {e}")
+
     return task
 
 # ==================================
@@ -479,11 +503,12 @@ async def stuck_coach(
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
     """
-    Provides a Socratic dialogue to help users overcome feelings of being stuck.
+    Provides a personalized Socratic dialogue to help users overcome feelings of being stuck.
     """
     ai_response = rag_handler.get_stuck_coach_response(
         message=request.message, 
-        user_id=current_user.id
+        user_id=current_user.id,
+        db=db
     )
     
     return schemas.StuckCoachResponse(
@@ -506,6 +531,76 @@ async def leaderboard(db: Session = Depends(get_db)):
         .all()
     )
     return top
+
+# ==================================
+# Advanced Analytics Endpoints
+# ==================================
+
+@app.get("/analytics/summary", response_model=schemas.AnalyticsSummary, tags=["Analytics"])
+async def get_analytics_summary(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    """Get comprehensive analytics summary for the current user."""
+    try:
+        return analytics_handler.get_analytics_summary(db, current_user.id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating analytics summary: {str(e)}")
+
+@app.get("/analytics/trends", response_model=schemas.AnalyticsTrends, tags=["Analytics"])
+async def get_analytics_trends(
+    period: str = Query("week", regex="^(week|month|quarter)$"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    """Get analytics trends for a specific period."""
+    try:
+        days_map = {"week": 7, "month": 30, "quarter": 90}
+        days = days_map[period]
+        
+        trends = analytics_handler.get_completion_trends(db, current_user.id, days)
+        
+        # For now, return basic trends structure
+        return schemas.AnalyticsTrends(
+            period=period,
+            trends=trends,
+            streak_history=[]  # Could be enhanced with actual streak history
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating analytics trends: {str(e)}")
+
+@app.get("/analytics/categories", response_model=List[schemas.CategoryStats], tags=["Analytics"])
+async def get_category_analytics(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    """Get task completion statistics by category."""
+    try:
+        return analytics_handler.get_category_stats(db, current_user.id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating category analytics: {str(e)}")
+
+@app.get("/analytics/performance", response_model=schemas.AnalyticsPerformance, tags=["Analytics"])
+async def get_performance_analytics(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    """Get performance analytics including best times and patterns."""
+    try:
+        return analytics_handler.get_analytics_performance(db, current_user.id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating performance analytics: {str(e)}")
+
+@app.get("/analytics/insights", response_model=List[schemas.PersonalizedInsight], tags=["Analytics"])
+async def get_personalized_insights(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    """Get personalized insights based on user behavior patterns."""
+    try:
+        return analytics_handler.generate_personalized_insights(db, current_user.id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating personalized insights: {str(e)}")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../services/toast_service.dart';
 import '../models/task_models.dart';
 import '../widgets/klarita_logo.dart';
+import '../widgets/realtime_insights_widget.dart';
 
 class BreakdownScreen extends StatefulWidget {
   const BreakdownScreen({Key? key}) : super(key: key);
@@ -57,11 +58,30 @@ class _BreakdownScreenState extends State<BreakdownScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildGoalInput().animate().fadeIn(delay: 200.ms),
-          Expanded(child: _buildResults()),
-        ],
+      body: Consumer<BreakdownProvider>(
+        builder: (context, provider, child) {
+          if (provider.currentSession != null) {
+            // When there's a session, make the entire body scrollable
+            return SingleChildScrollView(
+              child: Column(
+                children: [
+                  _buildGoalInput().animate().fadeIn(delay: 200.ms),
+                  _buildInsightsSection().animate().fadeIn(delay: 400.ms),
+                  _buildTaskList(provider),
+                ],
+              ),
+            );
+          } else {
+            // When there's no session, use the original layout
+            return Column(
+              children: [
+                _buildGoalInput().animate().fadeIn(delay: 200.ms),
+                _buildInsightsSection().animate().fadeIn(delay: 400.ms),
+                Expanded(child: _buildResults()),
+              ],
+            );
+          }
+        },
       ),
     );
   }
@@ -155,6 +175,29 @@ class _BreakdownScreenState extends State<BreakdownScreen> {
     );
   }
 
+  Widget _buildInsightsSection() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: const RealtimeInsightsWidget(
+        autoRefresh: true,
+        refreshInterval: Duration(minutes: 3),
+      ),
+    );
+  }
+
   Widget _buildResults() {
     return Consumer<BreakdownProvider>(
       builder: (context, provider, child) {
@@ -170,7 +213,8 @@ class _BreakdownScreenState extends State<BreakdownScreen> {
           return _buildEmptyState();
         }
 
-        return _buildTaskList(provider);
+        // Return empty container since task list is handled in the body
+        return const SizedBox.shrink();
       },
     );
   }
@@ -337,58 +381,99 @@ class _BreakdownScreenState extends State<BreakdownScreen> {
   Widget _buildTaskList(BreakdownProvider provider) {
     final session = provider.currentSession!;
     
-    return Column(
-      children: [
-        // Session header
-        Container(
-          margin: const EdgeInsets.all(AppSpacing.lg),
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          decoration: BoxDecoration(
-            color: AppTheme.success.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            border: Border.all(color: AppTheme.success.withOpacity(0.3)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.check_circle_outline, color: AppTheme.success, size: 24),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Your Breakdown',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: AppTheme.success,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      session.originalGoal,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                '${session.tasks.length} steps',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppTheme.success,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppTheme.background,
+            AppTheme.background.withOpacity(0.8),
+          ],
         ),
-        
-        // Task list
-        Expanded(
-          child: ReorderableListView.builder(
+      ),
+      child: Column(
+        children: [
+          // Enhanced Session header
+          Container(
+            margin: const EdgeInsets.all(AppSpacing.lg),
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppTheme.success.withOpacity(0.1),
+                  AppTheme.success.withOpacity(0.05),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(color: AppTheme.success.withOpacity(0.2)),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.success.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.success.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.check_circle_outline, color: AppTheme.success, size: 24),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Your Breakdown',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: AppTheme.success,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        session.originalGoal,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.textSecondary,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.success.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${session.tasks.length} steps',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.success,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Task list with enhanced styling
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             itemCount: session.tasks.length,
-            onReorder: (oldIndex, newIndex) => provider.reorderTasks(oldIndex, newIndex),
             itemBuilder: (context, index) {
               final task = session.tasks[index];
               return KeyedSubtree(
@@ -400,38 +485,72 @@ class _BreakdownScreenState extends State<BreakdownScreen> {
               );
             },
           ),
-        ),
-        
-        // Action buttons
-        Container(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Row(
-            children: [
-              Expanded(
-                                 child: OutlinedButton.icon(
-                   onPressed: () {
-                     // For now, just show a toast message
-                     ToastService.showInfo(context, 'Navigate to Planner tab to view your tasks');
-                   },
-                   icon: const Icon(Icons.calendar_today),
-                   label: const Text('Go to Planner'),
-                 ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    provider.saveCurrentSessionAsMemory();
-                    ToastService.showSuccess(context, 'Breakdown saved to memory!');
-                  },
-                  icon: const Icon(Icons.save),
-                  label: const Text('Save'),
+          
+          // Enhanced Action buttons
+          Container(
+            margin: const EdgeInsets.all(AppSpacing.lg),
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 20,
+                  offset: const Offset(0, -5),
                 ),
-              ),
-            ],
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      side: BorderSide(color: AppTheme.primary.withOpacity(0.3)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                      ),
+                    ),
+                    onPressed: () {
+                      ToastService.showInfo(context, 'Navigate to Planner tab to view your tasks');
+                    },
+                    icon: Icon(Icons.calendar_today, color: AppTheme.primary),
+                    label: Text(
+                      'Go to Planner',
+                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                      ),
+                    ),
+                    onPressed: () async {
+                      try {
+                        await provider.saveCurrentSessionAsMemory();
+                        ToastService.showSuccess(context, 'Breakdown saved to memory!');
+                      } catch (e) {
+                        ToastService.showError(context, 'Failed to save breakdown: ${e.toString()}');
+                      }
+                    },
+                    icon: const Icon(Icons.save),
+                    label: const Text('Save', style: TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -441,19 +560,49 @@ class _BreakdownScreenState extends State<BreakdownScreen> {
     return Card(
       key: ValueKey(task.id),
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        side: BorderSide(color: AppTheme.border.withOpacity(0.5)),
+      ),
       child: Container(
         padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white,
+              Colors.white.withOpacity(0.95),
+            ],
+          ),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
-                    color: AppTheme.primary,
-                    borderRadius: BorderRadius.circular(16),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AppTheme.primary,
+                        AppTheme.primary.withOpacity(0.8),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primary.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: Center(
                     child: Text(
@@ -461,6 +610,7 @@ class _BreakdownScreenState extends State<BreakdownScreen> {
                       style: textTheme.bodyMedium?.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
                     ),
                   ),
@@ -471,34 +621,46 @@ class _BreakdownScreenState extends State<BreakdownScreen> {
                     task.title,
                     style: textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w600,
+                      height: 1.3,
                     ),
                   ),
                 ),
-                ReorderableDragStartListener(
-                  index: index,
-                  child: Icon(
-                    Icons.drag_handle,
-                    color: AppTheme.textSecondary,
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.border.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ReorderableDragStartListener(
+                    index: index,
+                    child: Icon(
+                      Icons.drag_handle,
+                      color: AppTheme.textSecondary,
+                      size: 20,
+                    ),
                   ),
                 ),
               ],
             ),
             if (task.description != null && task.description!.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.sm),
+              const SizedBox(height: AppSpacing.md),
               Padding(
-                padding: const EdgeInsets.only(left: 40),
+                padding: const EdgeInsets.only(left: 44),
                 child: Text(
                   task.description!,
                   style: textTheme.bodyMedium?.copyWith(
                     color: AppTheme.textSecondary,
+                    height: 1.5,
                   ),
                 ),
               ),
             ],
             const SizedBox(height: AppSpacing.md),
             Padding(
-              padding: const EdgeInsets.only(left: 40),
-              child: Row(
+              padding: const EdgeInsets.only(left: 44),
+              child: Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -506,8 +668,16 @@ class _BreakdownScreenState extends State<BreakdownScreen> {
                       vertical: AppSpacing.xs,
                     ),
                     decoration: BoxDecoration(
-                      color: AppTheme.primary.withOpacity(0.1),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          AppTheme.primary.withOpacity(0.1),
+                          AppTheme.primary.withOpacity(0.05),
+                        ],
+                      ),
                       borderRadius: BorderRadius.circular(AppRadius.sm),
+                      border: Border.all(color: AppTheme.primary.withOpacity(0.2)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -565,4 +735,4 @@ class _BreakdownScreenState extends State<BreakdownScreen> {
         return AppTheme.error;
     }
   }
-} 
+}

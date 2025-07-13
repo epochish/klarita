@@ -11,7 +11,7 @@ class Task {
   final int? estimatedDuration;
   final int? position;
   final TaskPriority priority;
-  final bool completed;
+  final String status; // "pending", "active", "completed"
 
   Task({
     required this.id,
@@ -20,7 +20,7 @@ class Task {
     this.estimatedDuration,
     this.position,
     this.priority = TaskPriority.medium,
-    this.completed = false,
+    this.status = "pending",
   });
 
   factory Task.fromJson(Map<String, dynamic> json) {
@@ -34,7 +34,7 @@ class Task {
         (e) => e.toString().split('.').last == json['priority'],
         orElse: () => TaskPriority.medium,
       ),
-      completed: json['completed'] ?? false,
+      status: json['status'] ?? "pending",
     );
   }
 
@@ -44,9 +44,12 @@ class Task {
         'description': description,
         'estimated_duration': estimatedDuration,
         'priority': priority.toString().split('.').last,
-        'completed': completed,
+        'status': status,
         'position': position,
       };
+  
+  // Helper property for backward compatibility
+  bool get completed => status == "completed";
 }
 
 // Represents an interactive task breakdown session
@@ -98,7 +101,6 @@ class UserGamification {
   final int currentStreak;
   final int longestStreak;
   final List<Badge> badges;
-  final List<String> completedDates;
 
   UserGamification({
     required this.points,
@@ -106,7 +108,6 @@ class UserGamification {
     required this.currentStreak,
     required this.longestStreak,
     this.badges = const [],
-    this.completedDates = const [],
   });
 
   factory UserGamification.fromJson(Map<String, dynamic> json) {
@@ -114,19 +115,22 @@ class UserGamification {
         ?.map((badgeJson) => Badge.fromJson(badgeJson))
         .toList() ?? [];
         
-    var completedDatesList = (json['completed_dates'] as List?)
-        ?.map((date) => date.toString())
-        .toList() ?? [];
-        
     return UserGamification(
-      points: json['points'],
-      level: json['level'],
-      currentStreak: json['current_streak'],
-      longestStreak: json['longest_streak'],
+      points: json['points'] ?? 0,
+      level: json['level'] ?? 1,
+      currentStreak: json['current_streak'] ?? 0,
+      longestStreak: json['longest_streak'] ?? 0,
       badges: badgeList,
-      completedDates: completedDatesList,
     );
   }
+  
+  Map<String, dynamic> toJson() => {
+        'points': points,
+        'level': level,
+        'current_streak': currentStreak,
+        'longest_streak': longestStreak,
+        'badges': badges.map((b) => b.toJson()).toList(),
+      };
 }
 
 // Represents a badge that can be earned
@@ -148,6 +152,12 @@ class Badge {
       icon: json['icon'],
     );
   }
+  
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'description': description,
+        'icon': icon,
+      };
 }
 
 // Represents user preferences for AI interaction
@@ -169,4 +179,22 @@ class UserPreference {
       communicationStyle: json['communication_style'],
     );
   }
+}
+
+// Represents session completion statistics
+class SessionCompletionStats {
+  final int completedTasks;
+  final int totalTasks;
+  final double completionRate;
+
+  SessionCompletionStats({
+    required this.completedTasks,
+    required this.totalTasks,
+    required this.completionRate,
+  });
+
+  bool get isComplete => completedTasks == totalTasks && totalTasks > 0;
+  bool get isPartiallyComplete => completedTasks > 0 && completedTasks < totalTasks;
+  int get remainingTasks => totalTasks - completedTasks;
+  int get completionPercentage => (completionRate * 100).round();
 } 

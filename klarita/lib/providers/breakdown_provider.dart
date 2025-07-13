@@ -119,15 +119,16 @@ class BreakdownProvider with ChangeNotifier {
 
   // Save the current session as a memory for the RAG system
   Future<void> saveCurrentSessionAsMemory() async {
-    if (_currentSession == null) return;
+    if (_currentSession == null) {
+      throw Exception("No session available to save");
+    }
 
     try {
       await ApiService.saveSessionAsMemory(_currentSession!.id);
-      // Optionally, provide feedback to the user
       print("Session saved as memory!");
     } catch (e) {
-      // Handle or log the error as needed
       print("Error saving session as memory: ${e.toString()}");
+      rethrow; // Re-throw the error so UI can handle it
     }
   }
 
@@ -140,9 +141,55 @@ class BreakdownProvider with ChangeNotifier {
         rating: rating,
         comments: comments,
       );
-      print('Feedback submitted!');
+      print('Enhanced RL feedback submitted!');
     } catch (e) {
       print('Error submitting feedback: ${e.toString()}');
+      rethrow; // Re-throw for UI error handling
+    }
+  }
+
+  // Check if session is completed and ready for feedback
+  bool get isSessionReadyForFeedback {
+    if (_currentSession == null) return false;
+    final completedTasks = _currentSession!.tasks.where((task) => task.completed).length;
+    final totalTasks = _currentSession!.tasks.length;
+    // Consider session ready for feedback if 50% or more tasks are completed
+    return totalTasks > 0 && (completedTasks / totalTasks) >= 0.5;
+  }
+
+  // Get session completion stats
+  SessionCompletionStats get sessionStats {
+    if (_currentSession == null) {
+      return SessionCompletionStats(completedTasks: 0, totalTasks: 0, completionRate: 0.0);
+    }
+    final completedTasks = _currentSession!.tasks.where((task) => task.completed).length;
+    final totalTasks = _currentSession!.tasks.length;
+    final completionRate = totalTasks > 0 ? (completedTasks / totalTasks) : 0.0;
+    
+    return SessionCompletionStats(
+      completedTasks: completedTasks,
+      totalTasks: totalTasks,
+      completionRate: completionRate,
+    );
+  }
+
+  // Mark a task as completed and check for session completion
+  void markTaskCompleted(int taskId) {
+    if (_currentSession == null) return;
+    
+    final taskIndex = _currentSession!.tasks.indexWhere((task) => task.id == taskId);
+    if (taskIndex != -1) {
+      _currentSession!.tasks[taskIndex] = Task(
+        id: _currentSession!.tasks[taskIndex].id,
+        title: _currentSession!.tasks[taskIndex].title,
+        description: _currentSession!.tasks[taskIndex].description,
+        estimatedDuration: _currentSession!.tasks[taskIndex].estimatedDuration,
+        position: _currentSession!.tasks[taskIndex].position,
+        priority: _currentSession!.tasks[taskIndex].priority,
+        status: "completed",
+      );
+      notifyListeners();
+      _persistSession();
     }
   }
 
