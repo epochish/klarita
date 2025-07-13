@@ -98,6 +98,7 @@ class UserGamification {
   final int currentStreak;
   final int longestStreak;
   final List<Badge> badges;
+  final List<String> completedDates;
 
   UserGamification({
     required this.points,
@@ -105,12 +106,17 @@ class UserGamification {
     required this.currentStreak,
     required this.longestStreak,
     this.badges = const [],
+    this.completedDates = const [],
   });
 
   factory UserGamification.fromJson(Map<String, dynamic> json) {
-    var badgeList = (json['badges'] as List)
-        .map((badgeJson) => Badge.fromJson(badgeJson))
-        .toList();
+    var badgeList = (json['badges'] as List?)
+        ?.map((badgeJson) => Badge.fromJson(badgeJson))
+        .toList() ?? [];
+        
+    var completedDatesList = (json['completed_dates'] as List?)
+        ?.map((date) => date.toString())
+        .toList() ?? [];
         
     return UserGamification(
       points: json['points'],
@@ -118,6 +124,7 @@ class UserGamification {
       currentStreak: json['current_streak'],
       longestStreak: json['longest_streak'],
       badges: badgeList,
+      completedDates: completedDatesList,
     );
   }
 }

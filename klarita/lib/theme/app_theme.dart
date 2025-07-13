@@ -24,6 +24,14 @@ class AppTheme {
   static const Color warning = Color(0xFFFBBF24);
   static const Color error = Color(0xFFF87171);
 
+  // --- Dark Mode Palette ---
+  static const Color darkBackground = Color(0xFF0F1419); // Deep, calming dark blue-gray
+  static const Color darkSurface = Color(0xFF1A1F2E);    // Slightly lighter surface
+  static const Color darkBorder = Color(0xFF2D3748);     // Subtle border for dark mode
+  static const Color darkTextPrimary = Color(0xFFE2E8F0); // Light, readable text
+  static const Color darkTextSecondary = Color(0xFFA0AEC0); // Softer gray for secondary text
+  static const Color darkTextDisabled = Color(0xFF718096);  // For disabled states in dark mode
+
   // --- Typography ---
   // Using Manrope for its modern and clean aesthetic.
   static final TextTheme _textTheme = TextTheme(
@@ -34,6 +42,18 @@ class AppTheme {
     titleLarge: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w600, color: textPrimary, letterSpacing: -0.3),
     bodyLarge: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w500, color: textPrimary, height: 1.5),
     bodyMedium: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w500, color: textSecondary, height: 1.5),
+    labelLarge: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white), // For buttons
+  );
+
+  // --- Dark Mode Typography ---
+  static final TextTheme _darkTextTheme = TextTheme(
+    displayLarge: GoogleFonts.manrope(fontSize: 34, fontWeight: FontWeight.w800, color: darkTextPrimary, letterSpacing: -1.2),
+    displayMedium: GoogleFonts.manrope(fontSize: 28, fontWeight: FontWeight.w700, color: darkTextPrimary, letterSpacing: -1.0),
+    headlineLarge: GoogleFonts.manrope(fontSize: 24, fontWeight: FontWeight.w700, color: darkTextPrimary, letterSpacing: -0.8),
+    headlineMedium: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w600, color: darkTextPrimary, letterSpacing: -0.5),
+    titleLarge: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w600, color: darkTextPrimary, letterSpacing: -0.3),
+    bodyLarge: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w500, color: darkTextPrimary, height: 1.5),
+    bodyMedium: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w500, color: darkTextSecondary, height: 1.5),
     labelLarge: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white), // For buttons
   );
 
@@ -128,6 +148,99 @@ class AppTheme {
     
     // Pass in the text theme.
     textTheme: _textTheme,
+  );
+
+  // --- Dark Theme Definition ---
+  static ThemeData darkTheme = ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.dark,
+    
+    // --- Colors ---
+    colorScheme: const ColorScheme.dark(
+      primary: primary,
+      secondary: secondary,
+      surface: darkSurface,
+      background: darkBackground,
+      error: error,
+      onPrimary: Colors.white,
+      onSecondary: Colors.white,
+      onSurface: darkTextPrimary,
+      onBackground: darkTextPrimary,
+      onError: Colors.white,
+    ),
+    
+    // --- Components ---
+    scaffoldBackgroundColor: darkBackground,
+    
+    appBarTheme: AppBarTheme(
+      backgroundColor: darkBackground,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      centerTitle: true,
+      titleTextStyle: _darkTextTheme.headlineMedium,
+      iconTheme: const IconThemeData(color: darkTextSecondary),
+    ),
+    
+    cardTheme: CardThemeData(
+      color: darkSurface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        side: const BorderSide(color: darkBorder, width: 1.5),
+      ),
+    ),
+    
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: primary,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        textStyle: _darkTextTheme.labelLarge,
+      ),
+    ),
+    
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: primary,
+        textStyle: _darkTextTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+      ),
+    ),
+    
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: darkSurface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      hintStyle: _darkTextTheme.bodyMedium,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        borderSide: const BorderSide(color: darkBorder),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        borderSide: const BorderSide(color: darkBorder),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        borderSide: const BorderSide(color: primary, width: 2),
+      ),
+    ),
+
+    bottomNavigationBarTheme: BottomNavigationBarThemeData(
+      backgroundColor: darkSurface,
+      selectedItemColor: primary,
+      unselectedItemColor: darkTextDisabled,
+      elevation: 0,
+      type: BottomNavigationBarType.fixed,
+      selectedLabelStyle: _darkTextTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+      unselectedLabelStyle: _darkTextTheme.bodyMedium,
+    ),
+    
+    // Pass in the text theme.
+    textTheme: _darkTextTheme,
   );
 }
 

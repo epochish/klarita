@@ -9,6 +9,7 @@ import 'providers/auth_provider.dart';
 import 'providers/breakdown_provider.dart';
 import 'providers/gamification_provider.dart';
 import 'providers/stuck_coach_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/main_navigation.dart';
 import 'theme/app_theme.dart';
@@ -28,12 +29,17 @@ class KlaritaApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => BreakdownProvider()),
         ChangeNotifierProvider(create: (_) => GamificationProvider()),
         ChangeNotifierProvider(create: (_) => StuckCoachProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: MaterialApp(
-        title: 'Klarita',
-        theme: AppTheme.lightTheme,
-        home: const AuthGate(),
-        debugShowCheckedModeBanner: false,
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp(
+            title: 'Klarita',
+            theme: themeProvider.currentTheme,
+            home: const AuthGate(),
+            debugShowCheckedModeBanner: false,
+          );
+        },
       ),
     );
   }
